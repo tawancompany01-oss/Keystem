@@ -24,7 +24,7 @@ local ProtectionConfig = {
     SecretKey = "589452",
     
     -- The name of your Hub (shown in the kick message if they try to bypass)
-    HubName = "OYB HUB"
+    HubName = "Test"
 }
 
 -- Anti-Bypass Logic: Checks if the Key System successfully set the global variable
