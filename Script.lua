@@ -39,608 +39,781 @@ end
 -------------------------------------------------------------------------------
 -- 👇 YOUR MAIN SCRIPT CODE STARTS HERE 👇
 -------------------------------------------------------------------------------
--- Demonser Hub v2 | Anti-AFK + NPC Logger + Position Copier
--- RightShift = ซ่อน/แสดง
-
-local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
 local UserInputService = game:GetService("UserInputService")
-local VirtualUser = game:GetService("VirtualUser")
-local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
 
-local localPlayer = Players.LocalPlayer
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 
--- ===== GUARD: ลบ GUI เก่าก่อนรันใหม่ =====
-local existingGui = localPlayer:WaitForChild("PlayerGui"):FindFirstChild("DemonserHubV2")
-if existingGui then
-    existingGui:Destroy()
-    task.wait(0.1)
-end
+-- ===== DEFAULTS =====
+local WEBHOOK = "https://discord.com/api/webhooks/1437790888729382953/_PPWpXUN_f2XrMuqB-ubLaWBpD86YSuB5LzcyOpGKs752vTEWN8c6GmYlqMXbCJ2qCPa"
+local GUI_TOGGLE_KEY = Enum.KeyCode.K
 
+local stats = { 
+    spawnsDetected = 0, 
+    alertsSent = 0, 
+    soulsConsumed = 0 
+}
+
+-- ESP Drawing
+local espDrawings = {}
+
+-- ===== HELPER FUNCTIONS =====
 local function make(class, props, parent)
     local obj = Instance.new(class)
     for k, v in pairs(props) do obj[k] = v end
     if parent then obj.Parent = parent end
     return obj
 end
-local function corner(r, parent)
-    make("UICorner", { CornerRadius = UDim.new(0, r) }, parent)
+
+local function corner(r, parent) 
+    make("UICorner", { CornerRadius = UDim.new(0, r) }, parent) 
 end
+
 local function tween(obj, props, t)
-    TweenService:Create(obj, TweenInfo.new(t or 0.18, Enum.EasingStyle.Quad), props):Play()
+    TweenService:Create(obj, TweenInfo.new(t or 0.15, Enum.EasingStyle.Quad), props):Play()
 end
 
-local screenGui = make("ScreenGui", {
-    Name = "DemonserHubV2",
-    ResetOnSpawn = false,
-}, localPlayer:WaitForChild("PlayerGui"))
+local function httpPost(url, body)
+    if syn and syn.request then
+        pcall(function() syn.request({ Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body }) end)
+    elseif http and http.request then
+        pcall(function() http.request({ Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body }) end)
+    elseif request then
+        pcall(function() request({ Url=url, Method="POST", Headers={["Content-Type"]="application/json"}, Body=body }) end)
+    end
+end
 
+-- ===== GUI ROOT =====
+local screenGui = make("ScreenGui", {
+    Name = "LopperHubPro",
+    ResetOnSpawn = false,
+    ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+}, playerGui)
+
+-- ===== MAIN WINDOW =====
 local win = make("Frame", {
-    Size = UDim2.new(0, 340, 0, 480),
-    Position = UDim2.new(0.5, -170, 0.5, -240),
-    BackgroundColor3 = Color3.fromRGB(8, 4, 4),
+    Size = UDim2.new(0, 400, 0, 900),
+    Position = UDim2.new(0.5, -200, 0.5, -450),
+    BackgroundColor3 = Color3.fromRGB(12, 12, 18),
     BorderSizePixel = 0,
     ClipsDescendants = true,
 }, screenGui)
-corner(14, win)
-make("UIStroke", { Color = Color3.fromRGB(160, 20, 20), Thickness = 1.5, Transparency = 0.3 }, win)
+corner(16, win)
+make("UIStroke", { Color=Color3.fromRGB(55, 75, 140), Thickness=1.2, Transparency=0.4 }, win)
+
+-- ===== TITLE BAR =====
+local titleBar = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 56),
+    BackgroundColor3 = Color3.fromRGB(18, 18, 28),
+    BorderSizePixel = 0,
+}, win)
+corner(16, titleBar)
+make("Frame", {
+    Size = UDim2.new(1, 0, 0, 16),
+    Position = UDim2.new(0, 0, 1, -16),
+    BackgroundColor3 = Color3.fromRGB(18, 18, 28),
+    BorderSizePixel = 0,
+}, titleBar)
 make("Frame", {
     Size = UDim2.new(1, 0, 0, 2),
-    BackgroundColor3 = Color3.fromRGB(200, 20, 20),
-    BorderSizePixel = 0,
-}, win)
-
-local titleBar = make("Frame", {
-    Size = UDim2.new(1, 0, 0, 52),
-    BackgroundColor3 = Color3.fromRGB(14, 6, 6),
-    BorderSizePixel = 0,
-}, win)
-corner(14, titleBar)
-make("Frame", {
-    Size = UDim2.new(1, 0, 0, 14),
-    Position = UDim2.new(0, 0, 1, -14),
-    BackgroundColor3 = Color3.fromRGB(14, 6, 6),
+    Position = UDim2.new(0, 0, 1, -1),
+    BackgroundColor3 = Color3.fromRGB(60, 100, 220),
     BorderSizePixel = 0,
 }, titleBar)
 
-local eyeDot = make("Frame", {
+local dot = make("Frame", {
     Size = UDim2.new(0, 10, 0, 10),
-    Position = UDim2.new(0, 14, 0.5, -5),
-    BackgroundColor3 = Color3.fromRGB(220, 30, 30),
+    Position = UDim2.new(0, 18, 0.5, -5),
+    BackgroundColor3 = Color3.fromRGB(80, 220, 120),
     BorderSizePixel = 0,
 }, titleBar)
-corner(999, eyeDot)
-task.spawn(function()
-    while true do
-        tween(eyeDot, { BackgroundColor3 = Color3.fromRGB(255, 60, 60) }, 0.8)
-        task.wait(0.8)
-        tween(eyeDot, { BackgroundColor3 = Color3.fromRGB(120, 10, 10) }, 0.8)
-        task.wait(0.8)
-    end
-end)
+corner(999, dot)
 
 make("TextLabel", {
-    Size = UDim2.new(0, 180, 1, 0),
-    Position = UDim2.new(0, 32, 0, 0),
+    Size = UDim2.new(0.7, 0, 1, 0),
+    Position = UDim2.new(0, 38, 0, 0),
     BackgroundTransparency = 1,
-    Text = "DEMONSER HUB  v2",
-    TextColor3 = Color3.fromRGB(220, 40, 40),
+    Text = "LOPPER HUB PRO",
+    TextColor3 = Color3.fromRGB(220, 225, 255),
     TextSize = 15,
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, titleBar)
-make("TextLabel", {
-    Size = UDim2.new(0, 80, 1, 0),
-    Position = UDim2.new(1, -88, 0, 0),
+
+local keyDisplayLabel = make("TextLabel", {
+    Size = UDim2.new(0, 100, 1, 0),
+    Position = UDim2.new(1, -110, 0, 0),
     BackgroundTransparency = 1,
-    Text = "RShift - HIDE",
-    TextColor3 = Color3.fromRGB(80, 30, 30),
-    TextSize = 9,
+    Text = "K · HIDE",
+    TextColor3 = Color3.fromRGB(70, 80, 115),
+    TextSize = 11,
     Font = Enum.Font.GothamMedium,
     TextXAlignment = Enum.TextXAlignment.Right,
 }, titleBar)
 
-local tabFrame = make("Frame", {
-    Size = UDim2.new(1, -24, 0, 32),
-    Position = UDim2.new(0, 12, 0, 58),
+-- ===== CONTENT =====
+local content = make("ScrollingFrame", {
+    Size = UDim2.new(1, 0, 1, -56),
+    Position = UDim2.new(0, 0, 0, 56),
     BackgroundTransparency = 1,
+    BorderSizePixel = 0,
+    ScrollBarThickness = 0,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
 }, win)
-make("UIListLayout", {
-    FillDirection = Enum.FillDirection.Horizontal,
-    Padding = UDim.new(0, 6),
-}, tabFrame)
+make("UIListLayout", { Padding=UDim.new(0, 8), SortOrder=Enum.SortOrder.LayoutOrder }, content)
+make("UIPadding", {
+    PaddingLeft=UDim.new(0,14), PaddingRight=UDim.new(0,14),
+    PaddingTop=UDim.new(0,14), PaddingBottom=UDim.new(0,14),
+}, content)
 
-local tabNames = { "DAEMON", "NPC LOG", "POSITION" }
-local tabs = {}
-local tabContents = {}
+-- ===== STATS ROW =====
+local statsRow = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 64),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 32),
+    BorderSizePixel = 0,
+    LayoutOrder = 0,
+}, content)
+corner(10, statsRow)
+make("UIListLayout", { FillDirection=Enum.FillDirection.Horizontal, SortOrder=Enum.SortOrder.LayoutOrder }, statsRow)
 
-local activeTabColor = Color3.fromRGB(160, 20, 20)
-local inactiveTabColor = Color3.fromRGB(24, 8, 8)
-
-for i, name in ipairs(tabNames) do
-    local btn = make("TextButton", {
-        Size = UDim2.new(0, 94, 1, 0),
-        BackgroundColor3 = i == 1 and activeTabColor or inactiveTabColor,
-        BorderSizePixel = 0,
-        Text = name,
-        TextColor3 = i == 1 and Color3.fromRGB(255, 200, 200) or Color3.fromRGB(100, 40, 40),
+local function statBox(label, order)
+    local box = make("Frame", {
+        Size = UDim2.new(0.333, 0, 1, 0),
+        BackgroundTransparency = 1,
+        LayoutOrder = order,
+    }, statsRow)
+    make("TextLabel", {
+        Size = UDim2.new(1, 0, 0.45, 0),
+        Position = UDim2.new(0, 0, 0.1, 0),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = Color3.fromRGB(75, 85, 115),
         TextSize = 10,
         Font = Enum.Font.GothamBold,
-    }, tabFrame)
-    corner(6, btn)
-    tabs[i] = btn
-end
-
-for i = 1, 3 do
-    local content = make("Frame", {
-        Size = UDim2.new(1, -24, 0, 370),
-        Position = UDim2.new(0, 12, 0, 98),
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, box)
+    local val = make("TextLabel", {
+        Size = UDim2.new(1, 0, 0.5, 0),
+        Position = UDim2.new(0, 0, 0.5, 0),
         BackgroundTransparency = 1,
-        Visible = i == 1,
-    }, win)
-    tabContents[i] = content
+        Text = "0",
+        TextColor3 = Color3.fromRGB(195, 205, 255),
+        TextSize = 20,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Center,
+    }, box)
+    return val
 end
 
-local function switchTab(idx)
-    for i, btn in ipairs(tabs) do
-        local active = i == idx
-        tween(btn, {
-            BackgroundColor3 = active and activeTabColor or inactiveTabColor,
-            TextColor3 = active and Color3.fromRGB(255, 200, 200) or Color3.fromRGB(100, 40, 40),
-        })
-        tabContents[i].Visible = active
-    end
-end
-for i, btn in ipairs(tabs) do
-    btn.MouseButton1Click:Connect(function() switchTab(i) end)
+local spawnVal  = statBox("SPAWNS", 1)
+local alertVal  = statBox("ALERTS", 2)
+local soulVal = statBox("SOULS", 3)
+make("Frame", { Size=UDim2.new(0,1,0.5,0), Position=UDim2.new(0.333,0,0.25,0), BackgroundColor3=Color3.fromRGB(35,35,55), BorderSizePixel=0 }, statsRow)
+make("Frame", { Size=UDim2.new(0,1,0.5,0), Position=UDim2.new(0.666,0,0.25,0), BackgroundColor3=Color3.fromRGB(35,35,55), BorderSizePixel=0 }, statsRow)
+
+-- ===== SECTION LABELS =====
+local function sectionLabel(text, order)
+    make("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 18),
+        BackgroundTransparency = 1,
+        Text = text,
+        TextColor3 = Color3.fromRGB(55, 65, 95),
+        TextSize = 10,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        LayoutOrder = order,
+    }, content)
 end
 
--- ========================================
--- TAB 1: DAEMON (Anti-AFK)
--- ========================================
-local t1 = tabContents[1]
+-- ===== KEY BINDING CONFIG =====
+sectionLabel("KEY SETTINGS", 1)
 
-local statusCard = make("Frame", {
-    Size = UDim2.new(1, 0, 0, 50),
-    BackgroundColor3 = Color3.fromRGB(16, 6, 6),
+local keyConfigBg = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 56),
+    BackgroundColor3 = Color3.fromRGB(18, 18, 28),
     BorderSizePixel = 0,
-}, t1)
+    LayoutOrder = 2,
+}, content)
+corner(10, keyConfigBg)
+make("UIStroke", { Color=Color3.fromRGB(50, 75, 150), Thickness=1, Transparency=0.5 }, keyConfigBg)
+
+make("TextLabel", {
+    Size = UDim2.new(0.5, 0, 0.5, 0),
+    Position = UDim2.new(0, 14, 0, 8),
+    BackgroundTransparency = 1,
+    Text = "GUI Toggle Key",
+    TextColor3 = Color3.fromRGB(100, 130, 200),
+    TextSize = 11,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, keyConfigBg)
+
+local keyDisplayBtn = make("TextButton", {
+    Size = UDim2.new(0.45, 0, 0, 28),
+    Position = UDim2.new(1, -100, 0, 10),
+    BackgroundColor3 = Color3.fromRGB(30, 30, 50),
+    BorderSizePixel = 0,
+    Text = "K",
+    TextColor3 = Color3.fromRGB(150, 200, 255),
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+}, keyConfigBg)
+corner(6, keyDisplayBtn)
+make("UIStroke", { Color=Color3.fromRGB(60, 100, 180), Thickness=1, Transparency=0.4 }, keyDisplayBtn)
+
+local isListeningForKey = false
+keyDisplayBtn.MouseButton1Click:Connect(function()
+    isListeningForKey = not isListeningForKey
+    if isListeningForKey then
+        keyDisplayBtn.Text = "..."
+        tween(keyDisplayBtn, { BackgroundColor3 = Color3.fromRGB(50, 50, 80) })
+    else
+        tween(keyDisplayBtn, { BackgroundColor3 = Color3.fromRGB(30, 30, 50) })
+    end
+end)
+
+local function updateKeyDisplay()
+    local keyName = tostring(GUI_TOGGLE_KEY):gsub("Enum.KeyCode.", "")
+    keyDisplayBtn.Text = keyName
+    keyDisplayLabel.Text = keyName .. " · HIDE"
+end
+
+-- ===== WEBHOOK CONFIG =====
+sectionLabel("WEBHOOK SETTINGS", 3)
+
+local webhookInputBg = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 100),
+    BackgroundColor3 = Color3.fromRGB(18, 18, 28),
+    BorderSizePixel = 0,
+    LayoutOrder = 4,
+}, content)
+corner(10, webhookInputBg)
+make("UIStroke", { Color=Color3.fromRGB(50, 75, 150), Thickness=1, Transparency=0.5 }, webhookInputBg)
+
+make("TextLabel", {
+    Size = UDim2.new(1, -14, 0, 18),
+    Position = UDim2.new(0, 7, 0, 7),
+    BackgroundTransparency = 1,
+    Text = "Webhook URL",
+    TextColor3 = Color3.fromRGB(100, 130, 200),
+    TextSize = 10,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, webhookInputBg)
+
+local webhookTextBox = make("TextBox", {
+    Size = UDim2.new(1, -14, 0, 28),
+    Position = UDim2.new(0, 7, 0, 28),
+    BackgroundColor3 = Color3.fromRGB(15, 15, 25),
+    BorderSizePixel = 0,
+    Text = "",
+    PlaceholderText = "https://discord.com/api/webhooks/...",
+    PlaceholderColor3 = Color3.fromRGB(50, 60, 100),
+    TextColor3 = Color3.fromRGB(200, 210, 255),
+    TextSize = 10,
+    Font = Enum.Font.GothamMedium,
+    TextWrapped = true,
+}, webhookInputBg)
+corner(6, webhookTextBox)
+
+local webhookApplyBtn = make("TextButton", {
+    Size = UDim2.new(0.48, 0, 0, 24),
+    Position = UDim2.new(0, 7, 0, 62),
+    BackgroundColor3 = Color3.fromRGB(50, 100, 220),
+    BorderSizePixel = 0,
+    Text = "UPDATE",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 11,
+    Font = Enum.Font.GothamBold,
+}, webhookInputBg)
+corner(6, webhookApplyBtn)
+
+local webhookTestBtn = make("TextButton", {
+    Size = UDim2.new(0.48, 0, 0, 24),
+    Position = UDim2.new(0.52, 0, 0, 62),
+    BackgroundColor3 = Color3.fromRGB(80, 140, 255),
+    BorderSizePixel = 0,
+    Text = "TEST",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 11,
+    Font = Enum.Font.GothamBold,
+}, webhookInputBg)
+corner(6, webhookTestBtn)
+
+webhookApplyBtn.MouseButton1Click:Connect(function()
+    if webhookTextBox.Text ~= "" then
+        WEBHOOK = webhookTextBox.Text
+        tween(webhookApplyBtn, { BackgroundColor3 = Color3.fromRGB(50, 200, 100) })
+        task.wait(0.4)
+        tween(webhookApplyBtn, { BackgroundColor3 = Color3.fromRGB(50, 100, 220) })
+    end
+end)
+
+webhookTestBtn.MouseButton1Click:Connect(function()
+    tween(webhookTestBtn, { BackgroundColor3 = Color3.fromRGB(255, 200, 50) })
+    task.spawn(function()
+        httpPost(WEBHOOK, HttpService:JSONEncode({
+            content = "🧪 **TEST — Webhook Working!**",
+            embeds = {{
+                title = "✅ Lopper Hub Pro — Test Success",
+                description = "Webhook connection verified.",
+                color = 3066993,
+                fields = {
+                    { name="Player", value=player.Name, inline=true },
+                    { name="Time", value=os.date("%H:%M:%S"), inline=true }
+                }
+            }}
+        }))
+        task.wait(1)
+        tween(webhookTestBtn, { BackgroundColor3 = Color3.fromRGB(80, 140, 255) })
+    end)
+end)
+
+webhookApplyBtn.MouseEnter:Connect(function() tween(webhookApplyBtn, { BackgroundColor3 = Color3.fromRGB(70, 120, 240) }) end)
+webhookApplyBtn.MouseLeave:Connect(function() tween(webhookApplyBtn, { BackgroundColor3 = Color3.fromRGB(50, 100, 220) }) end)
+webhookTestBtn.MouseEnter:Connect(function() tween(webhookTestBtn, { BackgroundColor3 = Color3.fromRGB(100, 160, 255) }) end)
+webhookTestBtn.MouseLeave:Connect(function() tween(webhookTestBtn, { BackgroundColor3 = Color3.fromRGB(80, 140, 255) }) end)
+
+-- ===== TOGGLES =====
+local toggleStates = {}
+local function createToggle(label, sublabel, defaultOn, order)
+    local row = make("Frame", {
+        Size = UDim2.new(1, 0, 0, 56),
+        BackgroundColor3 = Color3.fromRGB(18, 18, 28),
+        BorderSizePixel = 0,
+        LayoutOrder = order,
+    }, content)
+    corner(10, row)
+    make("TextLabel", {
+        Size = UDim2.new(0.65, 0, 0.5, 0),
+        Position = UDim2.new(0, 14, 0, 8),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = Color3.fromRGB(210, 215, 235),
+        TextSize = 13,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, row)
+    make("TextLabel", {
+        Size = UDim2.new(0.65, 0, 0.4, 0),
+        Position = UDim2.new(0, 14, 0.55, 0),
+        BackgroundTransparency = 1,
+        Text = sublabel,
+        TextColor3 = Color3.fromRGB(65, 75, 105),
+        TextSize = 11,
+        Font = Enum.Font.GothamMedium,
+        TextXAlignment = Enum.TextXAlignment.Left,
+    }, row)
+    local stateLabel = make("TextLabel", {
+        Size = UDim2.new(0, 28, 0, 16),
+        Position = UDim2.new(1, -102, 0.5, -8),
+        BackgroundTransparency = 1,
+        Text = defaultOn and "ON" or "OFF",
+        TextColor3 = defaultOn and Color3.fromRGB(50, 200, 100) or Color3.fromRGB(80, 80, 110),
+        TextSize = 11,
+        Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Right,
+    }, row)
+    local pillBg = make("Frame", {
+        Size = UDim2.new(0, 46, 0, 24),
+        Position = UDim2.new(1, -60, 0.5, -12),
+        BackgroundColor3 = defaultOn and Color3.fromRGB(50, 200, 100) or Color3.fromRGB(38, 38, 58),
+        BorderSizePixel = 0,
+    }, row)
+    corner(999, pillBg)
+    local knob = make("Frame", {
+        Size = UDim2.new(0, 18, 0, 18),
+        Position = defaultOn and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9),
+        BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+        BorderSizePixel = 0,
+    }, pillBg)
+    corner(999, knob)
+    local isOn = defaultOn
+    toggleStates[label] = isOn
+    local btn = make("TextButton", { Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="" }, row)
+    btn.MouseButton1Click:Connect(function()
+        isOn = not isOn
+        toggleStates[label] = isOn
+        tween(pillBg, { BackgroundColor3 = isOn and Color3.fromRGB(50, 200, 100) or Color3.fromRGB(38, 38, 58) })
+        tween(knob, { Position = isOn and UDim2.new(1,-21,0.5,-9) or UDim2.new(0,3,0.5,-9) })
+        stateLabel.Text = isOn and "ON" or "OFF"
+        stateLabel.TextColor3 = isOn and Color3.fromRGB(50, 200, 100) or Color3.fromRGB(80, 80, 110)
+    end)
+    btn.MouseEnter:Connect(function() tween(row, { BackgroundColor3=Color3.fromRGB(22,22,36) }) end)
+    btn.MouseLeave:Connect(function() tween(row, { BackgroundColor3=Color3.fromRGB(18,18,28) }) end)
+    return function() return toggleStates[label] end
+end
+
+sectionLabel("SPAWN DETECTION", 5)
+local getSpawnDetection = createToggle("Spawn Detection", "Scan for spawn text", false, 6)
+local getDiscordAlerts  = createToggle("Discord Alerts",  "Send webhook on spawn", true,  7)
+local getSoundAlert     = createToggle("Sound Alert",     "Play sound on detect",  true,  8)
+
+sectionLabel("ANTI-AFK GUARDIAN", 9)
+local getAntiAfk = createToggle("Anti-AFK Guardian", "Auto-respond when idle", false, 10)
+
+-- ===== ANTI-AFK STATUS =====
+local statusCard = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 48),
+    BackgroundColor3 = Color3.fromRGB(16, 16, 28),
+    BorderSizePixel = 0,
+    LayoutOrder = 11,
+}, content)
 corner(10, statusCard)
-make("UIStroke", { Color = Color3.fromRGB(80, 10, 10), Thickness = 1, Transparency = 0.4 }, statusCard)
+make("UIStroke", { Color = Color3.fromRGB(80, 80, 120), Thickness = 1, Transparency = 0.4 }, statusCard)
 
 local statusDot = make("Frame", {
     Size = UDim2.new(0, 8, 0, 8),
     Position = UDim2.new(0, 14, 0.5, -4),
-    BackgroundColor3 = Color3.fromRGB(60, 10, 10),
+    BackgroundColor3 = Color3.fromRGB(80, 80, 120),
     BorderSizePixel = 0,
 }, statusCard)
 corner(999, statusDot)
 
 local statusLabel = make("TextLabel", {
-    Size = UDim2.new(1, -90, 1, 0),
+    Size = UDim2.new(0.7, 0, 1, 0),
     Position = UDim2.new(0, 30, 0, 0),
     BackgroundTransparency = 1,
-    Text = "SLEEPING...",
-    TextColor3 = Color3.fromRGB(100, 30, 30),
-    TextSize = 13,
+    Text = "GUARDIAN SLEEPING",
+    TextColor3 = Color3.fromRGB(100, 100, 150),
+    TextSize = 12,
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, statusCard)
 
-local countLabel = make("TextLabel", {
-    Size = UDim2.new(0, 70, 1, 0),
-    Position = UDim2.new(1, -74, 0, 0),
+-- ===== FPS CAP SECTION =====
+sectionLabel("PERFORMANCE", 12)
+
+local fpsRow = make("Frame", {
+    Size = UDim2.new(1, 0, 0, 80),
+    BackgroundColor3 = Color3.fromRGB(18, 18, 28),
+    BorderSizePixel = 0,
+    LayoutOrder = 13,
+}, content)
+corner(10, fpsRow)
+make("UIStroke", { Color=Color3.fromRGB(80, 140, 255), Thickness=1, Transparency=0.65 }, fpsRow)
+
+local fpsCurrentLabel = make("TextLabel", {
+    Size = UDim2.new(1, -14, 0, 22),
+    Position = UDim2.new(0, 14, 0, 8),
     BackgroundTransparency = 1,
-    Text = "0 SOUL",
-    TextColor3 = Color3.fromRGB(80, 20, 20),
+    Text = "FPS Cap: 60",
+    TextColor3 = Color3.fromRGB(80, 160, 255),
+    TextSize = 13,
+    Font = Enum.Font.GothamBold,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, fpsRow)
+
+local fpsInputBg = make("Frame", {
+    Size = UDim2.new(1, -14, 0, 34),
+    Position = UDim2.new(0, 7, 0, 36),
+    BackgroundColor3 = Color3.fromRGB(20, 20, 32),
+    BorderSizePixel = 0,
+}, fpsRow)
+corner(8, fpsInputBg)
+make("UIStroke", { Color=Color3.fromRGB(50, 60, 100), Thickness=1, Transparency=0.5 }, fpsInputBg)
+
+make("TextLabel", {
+    Size = UDim2.new(0, 36, 1, 0),
+    Position = UDim2.new(0, 10, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "FPS",
+    TextColor3 = Color3.fromRGB(60, 70, 110),
     TextSize = 11,
     Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Right,
-}, statusCard)
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, fpsInputBg)
 
-make("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 20),
-    Position = UDim2.new(0, 0, 0, 58),
+local fpsTextBox = make("TextBox", {
+    Size = UDim2.new(1, -110, 1, 0),
+    Position = UDim2.new(0, 44, 0, 0),
     BackgroundTransparency = 1,
-    Text = "-- ACTIVITY LOG",
-    TextColor3 = Color3.fromRGB(100, 20, 20),
-    TextSize = 10,
+    Text = "",
+    PlaceholderText = "Enter number...",
+    PlaceholderColor3 = Color3.fromRGB(50, 58, 90),
+    TextColor3 = Color3.fromRGB(200, 210, 255),
+    TextSize = 14,
     Font = Enum.Font.GothamBold,
     TextXAlignment = Enum.TextXAlignment.Left,
-}, t1)
+    ClearTextOnFocus = true,
+}, fpsInputBg)
 
-local afkLog = make("ScrollingFrame", {
-    Size = UDim2.new(1, 0, 0, 200),
-    Position = UDim2.new(0, 0, 0, 78),
-    BackgroundColor3 = Color3.fromRGB(12, 4, 4),
+local fpsOkBtn = make("TextButton", {
+    Size = UDim2.new(0, 56, 1, -8),
+    Position = UDim2.new(1, -62, 0, 4),
+    BackgroundColor3 = Color3.fromRGB(50, 100, 220),
     BorderSizePixel = 0,
-    ScrollBarThickness = 2,
-    ScrollBarImageColor3 = Color3.fromRGB(120, 20, 20),
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, t1)
-corner(8, afkLog)
-make("UIStroke", { Color = Color3.fromRGB(70, 10, 10), Thickness = 1, Transparency = 0.5 }, afkLog)
-make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8) }, afkLog)
-make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, afkLog)
+    Text = "SET",
+    TextColor3 = Color3.fromRGB(255, 255, 255),
+    TextSize = 12,
+    Font = Enum.Font.GothamBold,
+}, fpsInputBg)
+corner(6, fpsOkBtn)
 
-local afkLogCount = 0
-local function addAfkLog(msg)
-    afkLogCount += 1
-    make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 16),
-        BackgroundTransparency = 1,
-        Text = "[" .. os.date("%H:%M:%S") .. "] " .. msg,
-        TextColor3 = Color3.fromRGB(160, 50, 50),
-        TextSize = 10,
-        Font = Enum.Font.Code,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        LayoutOrder = afkLogCount,
-    }, afkLog)
-    task.wait()
-    afkLog.CanvasPosition = Vector2.new(0, afkLog.AbsoluteCanvasSize.Y)
+local function applyFps()
+    local val = tonumber(fpsTextBox.Text)
+    if val and val >= 0 then
+        local fps = math.floor(val)
+        if setfpscap then
+            setfpscap(fps)
+        end
+        fpsCurrentLabel.Text = fps == 0 and "FPS Cap: UNLIMITED" or ("FPS Cap: " .. fps)
+        fpsCurrentLabel.TextColor3 = fps == 0 and Color3.fromRGB(80, 220, 120) or Color3.fromRGB(80, 160, 255)
+        fpsTextBox.Text = ""
+        tween(fpsOkBtn, { BackgroundColor3 = Color3.fromRGB(50, 200, 100) })
+        task.wait(0.4)
+        tween(fpsOkBtn, { BackgroundColor3 = Color3.fromRGB(50, 100, 220) })
+    else
+        tween(fpsInputBg, { BackgroundColor3 = Color3.fromRGB(60, 15, 15) })
+        task.wait(0.3)
+        tween(fpsInputBg, { BackgroundColor3 = Color3.fromRGB(20, 20, 32) })
+    end
 end
 
-local toggleBtn = make("TextButton", {
-    Size = UDim2.new(1, 0, 0, 40),
-    Position = UDim2.new(0, 0, 0, 290),
-    BackgroundColor3 = Color3.fromRGB(100, 10, 10),
-    BorderSizePixel = 0,
-    Text = "> AWAKEN DAEMON",
-    TextColor3 = Color3.fromRGB(255, 200, 200),
-    TextSize = 13,
-    Font = Enum.Font.GothamBold,
-}, t1)
-corner(10, toggleBtn)
-make("UIStroke", { Color = Color3.fromRGB(200, 30, 30), Thickness = 1, Transparency = 0.5 }, toggleBtn)
+fpsOkBtn.MouseButton1Click:Connect(applyFps)
+fpsTextBox.FocusLost:Connect(function(enter) if enter then applyFps() end end)
+fpsOkBtn.MouseEnter:Connect(function() tween(fpsOkBtn, { BackgroundColor3 = Color3.fromRGB(70, 120, 240) }) end)
+fpsOkBtn.MouseLeave:Connect(function() tween(fpsOkBtn, { BackgroundColor3 = Color3.fromRGB(50, 100, 220) }) end)
 
-local isActive = false
-local soulCount = 0
-local afkConnection
+if setfpscap then
+    setfpscap(60)
+end
 
-local function setActive(state)
-    isActive = state
+-- ===== ESP SECTION =====
+sectionLabel("ESP", 14)
+local getESP = createToggle("ESP Display", "Show player names and HP", false, 15)
+
+local function createESPDrawing(targetPlayer)
+    if targetPlayer == player then return nil end
+    
+    local nameText = Drawing.new("Text")
+    nameText.Text = targetPlayer.Name
+    nameText.Size = 16
+    nameText.Color = Color3.fromRGB(100, 200, 255)
+    nameText.Center = true
+    nameText.Outline = true
+    nameText.OutlineColor = Color3.fromRGB(0, 0, 0)
+    nameText.Visible = false
+    
+    local hpText = Drawing.new("Text")
+    hpText.Text = "HP: 100"
+    hpText.Size = 14
+    hpText.Color = Color3.fromRGB(100, 255, 100)
+    hpText.Center = true
+    hpText.Outline = true
+    hpText.OutlineColor = Color3.fromRGB(0, 0, 0)
+    hpText.Visible = false
+    
+    return {
+        name = nameText,
+        hp = hpText,
+        player = targetPlayer
+    }
+end
+
+local espTexts = {}
+
+local function updateESP()
+    if not getESP() then
+        for _, esp in pairs(espTexts) do
+            esp.name:Remove()
+            esp.hp:Remove()
+        end
+        espTexts = {}
+        return
+    end
+    
+    for _, targetPlayer in pairs(Players:GetPlayers()) do
+        if targetPlayer ~= player then
+            if not espTexts[targetPlayer.Name] then
+                espTexts[targetPlayer.Name] = createESPDrawing(targetPlayer)
+            end
+            
+            local esp = espTexts[targetPlayer.Name]
+            if esp and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") and targetPlayer.Character:FindFirstChild("Humanoid") then
+                local rootPart = targetPlayer.Character.HumanoidRootPart
+                local humanoid = targetPlayer.Character.Humanoid
+                local screenPos = workspace.CurrentCamera:WorldToScreenPoint(rootPart.Position)
+                
+                esp.name.Position = Vector2.new(screenPos.X, screenPos.Y - 15)
+                esp.hp.Position = Vector2.new(screenPos.X, screenPos.Y + 5)
+                
+                local distance = (rootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                local hpPercent = math.floor((humanoid.Health / humanoid.MaxHealth) * 100)
+                
+                esp.name.Text = targetPlayer.Name .. " [" .. math.floor(distance) .. "m]"
+                esp.hp.Text = "HP: " .. hpPercent .. "%"
+                
+                -- Color based on HP
+                if hpPercent > 50 then
+                    esp.hp.Color = Color3.fromRGB(100, 255, 100)
+                elseif hpPercent > 25 then
+                    esp.hp.Color = Color3.fromRGB(255, 255, 100)
+                else
+                    esp.hp.Color = Color3.fromRGB(255, 100, 100)
+                end
+                
+                esp.name.Visible = screenPos.Z > 0
+                esp.hp.Visible = screenPos.Z > 0
+            end
+        end
+    end
+    
+    for name, esp in pairs(espTexts) do
+        if not Players:FindFirstChild(name) then
+            esp.name:Remove()
+            esp.hp:Remove()
+            espTexts[name] = nil
+        end
+    end
+end
+
+-- ===== SPAWN LOGIC =====
+local function scanForSpawn()
+    for _, gui in ipairs(player:GetDescendants()) do  
+        if (gui:IsA("TextLabel") or gui:IsA("TextButton"))
+            and gui.Text and string.find(gui.Text, "IT APPEARS ONCE AGAIN") then
+            return true
+        end
+    end
+    return false
+end
+
+local function sendDiscordAlert()
+    task.spawn(function()
+        httpPost(WEBHOOK, HttpService:JSONEncode({
+            content = "🎯 **SPAWN DETECTED!**",
+            embeds = {{
+                title = "✨ IT APPEARS ONCE AGAIN!",
+                description = "ของมาละไอสัส",
+                color = 16776960,
+                fields = {
+                    { name="Player", value=player.Name, inline=true },
+                    { name="Time", value=os.date("%H:%M:%S"), inline=true }
+                }
+            }}
+        }))
+    end)
+end
+
+local function playSound()
+    pcall(function()
+        local s = Instance.new("Sound")
+        s.SoundId = "rbxassetid://12221967"
+        s.Volume = 1
+        s.Parent = workspace
+        s:Play()
+        game:GetService("Debris"):AddItem(s, 3)
+    end)
+end
+
+-- ===== ANTI-AFK LOGIC =====
+local isAntiAFKActive = false
+local antiAFKConnection = nil
+
+local function setAntiAFKStatus(state)
+    isAntiAFKActive = state
     if state then
-        tween(statusDot, { BackgroundColor3 = Color3.fromRGB(220, 30, 30) })
-        statusLabel.Text = "DAEMON AWAKE"
-        tween(statusLabel, { TextColor3 = Color3.fromRGB(220, 60, 60) })
-        tween(toggleBtn, { BackgroundColor3 = Color3.fromRGB(40, 8, 8) })
-        toggleBtn.Text = "[] PUT DAEMON TO SLEEP"
-        addAfkLog("Daemon awakened.")
+        tween(statusDot, { BackgroundColor3 = Color3.fromRGB(220, 120, 50) })
+        tween(statusLabel, { TextColor3 = Color3.fromRGB(220, 150, 80) })
+        statusLabel.Text = "GUARDIAN ACTIVE"
 
         task.spawn(function()
-            while isActive do
-                tween(statusDot, { BackgroundColor3 = Color3.fromRGB(255, 60, 60) }, 0.5)
+            while isAntiAFKActive do
+                tween(statusDot, { BackgroundColor3 = Color3.fromRGB(255, 150, 80) }, 0.5)
                 task.wait(0.5)
-                if not isActive then break end
-                tween(statusDot, { BackgroundColor3 = Color3.fromRGB(100, 10, 10) }, 0.5)
+                if not isAntiAFKActive then break end
+                tween(statusDot, { BackgroundColor3 = Color3.fromRGB(200, 100, 30) }, 0.5)
                 task.wait(0.5)
             end
         end)
 
-        afkConnection = localPlayer.Idled:Connect(function()
-            VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-            task.wait(0.5)
-            VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
-            soulCount += 1
-            countLabel.Text = soulCount .. " SOUL"
-            addAfkLog("Soul consumed. (" .. soulCount .. " total)")
+        if antiAFKConnection then antiAFKConnection:Disconnect() end
+        antiAFKConnection = player.Idled:Connect(function()
+            if isAntiAFKActive then
+                VirtualUser:Button2Down(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+                task.wait(0.5)
+                VirtualUser:Button2Up(Vector2.new(0, 0), workspace.CurrentCamera.CFrame)
+                stats.soulsConsumed += 1
+                soulVal.Text = tostring(stats.soulsConsumed)
+            end
         end)
     else
-        tween(statusDot, { BackgroundColor3 = Color3.fromRGB(60, 10, 10) })
-        statusLabel.Text = "SLEEPING..."
-        tween(statusLabel, { TextColor3 = Color3.fromRGB(100, 30, 30) })
-        tween(toggleBtn, { BackgroundColor3 = Color3.fromRGB(100, 10, 10) })
-        toggleBtn.Text = "> AWAKEN DAEMON"
-        addAfkLog("Daemon returned to darkness.")
-        if afkConnection then afkConnection:Disconnect() afkConnection = nil end
-    end
-end
-
-toggleBtn.MouseButton1Click:Connect(function() setActive(not isActive) end)
-toggleBtn.MouseEnter:Connect(function()
-    tween(toggleBtn, { BackgroundColor3 = isActive and Color3.fromRGB(60,10,10) or Color3.fromRGB(130,15,15) })
-end)
-toggleBtn.MouseLeave:Connect(function()
-    tween(toggleBtn, { BackgroundColor3 = isActive and Color3.fromRGB(40,8,8) or Color3.fromRGB(100,10,10) })
-end)
-
--- ========================================
--- TAB 2: NPC LOGGER
--- ========================================
-local t2 = tabContents[2]
-
-make("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 20),
-    BackgroundTransparency = 1,
-    Text = "-- NPC DETECTOR  (range: 15 studs)",
-    TextColor3 = Color3.fromRGB(100, 20, 20),
-    TextSize = 10,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, t2)
-
-local npcLog = make("ScrollingFrame", {
-    Size = UDim2.new(1, 0, 0, 240),
-    Position = UDim2.new(0, 0, 0, 24),
-    BackgroundColor3 = Color3.fromRGB(12, 4, 4),
-    BorderSizePixel = 0,
-    ScrollBarThickness = 2,
-    ScrollBarImageColor3 = Color3.fromRGB(120, 20, 20),
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, t2)
-corner(8, npcLog)
-make("UIStroke", { Color = Color3.fromRGB(70, 10, 10), Thickness = 1, Transparency = 0.5 }, npcLog)
-make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8) }, npcLog)
-make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, npcLog)
-
-local npcLogCount = 0
-local function addNpcLog(msg, color)
-    npcLogCount += 1
-    make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 16),
-        BackgroundTransparency = 1,
-        Text = msg,
-        TextColor3 = color or Color3.fromRGB(160, 50, 50),
-        TextSize = 10,
-        Font = Enum.Font.Code,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        LayoutOrder = npcLogCount,
-        TextWrapped = true,
-    }, npcLog)
-    task.wait()
-    npcLog.CanvasPosition = Vector2.new(0, npcLog.AbsoluteCanvasSize.Y)
-end
-
-local scanBtn = make("TextButton", {
-    Size = UDim2.new(1, 0, 0, 36),
-    Position = UDim2.new(0, 0, 0, 272),
-    BackgroundColor3 = Color3.fromRGB(100, 10, 10),
-    BorderSizePixel = 0,
-    Text = "SCAN NEARBY NPCs",
-    TextColor3 = Color3.fromRGB(255, 200, 200),
-    TextSize = 12,
-    Font = Enum.Font.GothamBold,
-}, t2)
-corner(10, scanBtn)
-
-local autoTalkBtn = make("TextButton", {
-    Size = UDim2.new(1, 0, 0, 36),
-    Position = UDim2.new(0, 0, 0, 314),
-    BackgroundColor3 = Color3.fromRGB(60, 8, 8),
-    BorderSizePixel = 0,
-    Text = "AUTO TALK (nearest NPC)",
-    TextColor3 = Color3.fromRGB(200, 160, 160),
-    TextSize = 12,
-    Font = Enum.Font.GothamBold,
-}, t2)
-corner(10, autoTalkBtn)
-make("UIStroke", { Color = Color3.fromRGB(140, 20, 20), Thickness = 1, Transparency = 0.5 }, autoTalkBtn)
-
-local function isNPC(model)
-    if not model:FindFirstChildOfClass("Humanoid") then return false end
-    for _, p in ipairs(Players:GetPlayers()) do
-        if p.Character == model then return false end
-    end
-    return true
-end
-
-local function getPlayerRoot()
-    local char = localPlayer.Character
-    if char then return char:FindFirstChild("HumanoidRootPart") end
-    return nil
-end
-
-local function getNearbyNPCs(range)
-    local root = getPlayerRoot()
-    if not root then return {} end
-    local found = {}
-    for _, model in ipairs(workspace:GetDescendants()) do
-        if model:IsA("Model") and isNPC(model) then
-            local hrp = model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
-            if hrp then
-                local dist = (hrp.Position - root.Position).Magnitude
-                if dist <= range then
-                    table.insert(found, { name = model.Name, dist = math.floor(dist), model = model })
-                end
-            end
+        tween(statusDot, { BackgroundColor3 = Color3.fromRGB(80, 80, 120) })
+        tween(statusLabel, { TextColor3 = Color3.fromRGB(100, 100, 150) })
+        statusLabel.Text = "GUARDIAN SLEEPING"
+        if antiAFKConnection then
+            antiAFKConnection:Disconnect()
+            antiAFKConnection = nil
         end
     end
-    table.sort(found, function(a, b) return a.dist < b.dist end)
-    return found
 end
 
-scanBtn.MouseButton1Click:Connect(function()
-    addNpcLog("-- SCANNING... --", Color3.fromRGB(180, 60, 60))
-    local npcs = getNearbyNPCs(15)
-    if #npcs == 0 then
-        addNpcLog("  No NPCs found within 15 studs.", Color3.fromRGB(100, 40, 40))
-    else
-        for _, data in ipairs(npcs) do
-            addNpcLog(string.format("  [NPC] %-20s | %.0f studs", data.name, data.dist), Color3.fromRGB(200, 80, 80))
-        end
-    end
-    addNpcLog("-- DONE (" .. #npcs .. " found) --", Color3.fromRGB(180, 60, 60))
-end)
-
-autoTalkBtn.MouseButton1Click:Connect(function()
-    local npcs = getNearbyNPCs(15)
-    if #npcs == 0 then
-        addNpcLog("[AUTO] No NPC nearby to talk to.", Color3.fromRGB(100, 40, 40))
-        return
-    end
-    local nearest = npcs[1]
-    addNpcLog("[AUTO] Talking to: " .. nearest.name, Color3.fromRGB(220, 100, 100))
-
-    local prompt = nearest.model:FindFirstChildWhichIsA("ProximityPrompt", true)
-    if prompt then
-        fireproximityprompt(prompt)
-        addNpcLog("[AUTO] Fired ProximityPrompt on " .. nearest.name, Color3.fromRGB(220, 120, 120))
-        return
-    end
-
-    local click = nearest.model:FindFirstChildWhichIsA("ClickDetector", true)
-    if click then
-        fireclickdetector(click)
-        addNpcLog("[AUTO] Fired ClickDetector on " .. nearest.name, Color3.fromRGB(220, 120, 120))
-        return
-    end
-
-    addNpcLog("[AUTO] No interact found on " .. nearest.name, Color3.fromRGB(120, 40, 40))
-end)
-
--- ========================================
--- TAB 3: POSITION
--- ========================================
-local t3 = tabContents[3]
-
-make("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 20),
-    BackgroundTransparency = 1,
-    Text = "-- POSITION TOOLS",
-    TextColor3 = Color3.fromRGB(100, 20, 20),
-    TextSize = 10,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, t3)
-
-local posCard = make("Frame", {
-    Size = UDim2.new(1, 0, 0, 70),
-    Position = UDim2.new(0, 0, 0, 24),
-    BackgroundColor3 = Color3.fromRGB(16, 6, 6),
-    BorderSizePixel = 0,
-}, t3)
-corner(10, posCard)
-make("UIStroke", { Color = Color3.fromRGB(80, 10, 10), Thickness = 1, Transparency = 0.4 }, posCard)
-
-local xLabel = make("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 18),
-    Position = UDim2.new(0, 10, 0, 8),
-    BackgroundTransparency = 1,
-    Text = "X :  0.000",
-    TextColor3 = Color3.fromRGB(220, 60, 60),
-    TextSize = 13,
-    Font = Enum.Font.Code,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, posCard)
-local yLabel = make("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 18),
-    Position = UDim2.new(0, 10, 0, 26),
-    BackgroundTransparency = 1,
-    Text = "Y :  0.000",
-    TextColor3 = Color3.fromRGB(180, 50, 50),
-    TextSize = 13,
-    Font = Enum.Font.Code,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, posCard)
-local zLabel = make("TextLabel", {
-    Size = UDim2.new(1, -20, 0, 18),
-    Position = UDim2.new(0, 10, 0, 44),
-    BackgroundTransparency = 1,
-    Text = "Z :  0.000",
-    TextColor3 = Color3.fromRGB(140, 40, 40),
-    TextSize = 13,
-    Font = Enum.Font.Code,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, posCard)
+-- ===== MAIN LOOP =====
+local wasDetected = false
+local lastAlert   = 0
+local startTime   = tick()
+local lastScan    = 0
+local lastESPUpdate = 0
 
 RunService.Heartbeat:Connect(function()
-    local char = localPlayer.Character
-    if char then
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            local p = hrp.Position
-            xLabel.Text = string.format("X :  %.3f", p.X)
-            yLabel.Text = string.format("Y :  %.3f", p.Y)
-            zLabel.Text = string.format("Z :  %.3f", p.Z)
+    local now = tick()
+
+    -- Update anti-AFK state from toggle
+    local antiAFKToggleState = getAntiAfk()
+    if antiAFKToggleState ~= isAntiAFKActive then
+        setAntiAFKStatus(antiAFKToggleState)
+    end
+
+    -- Update ESP every 0.1 seconds
+    if (now - lastESPUpdate) >= 0.1 then
+        updateESP()
+        lastESPUpdate = now
+    end
+
+    -- Scan for spawns every 0.5 seconds
+    if (now - lastScan) < 0.5 then return end
+    lastScan = now
+
+    if getSpawnDetection() and scanForSpawn() and not wasDetected then
+        if (now - lastAlert) >= 3 then
+            stats.spawnsDetected += 1
+            spawnVal.Text = tostring(stats.spawnsDetected)
+            if getSoundAlert() then playSound() end
+            if getDiscordAlerts() then
+                sendDiscordAlert()
+                stats.alertsSent += 1
+                alertVal.Text = tostring(stats.alertsSent)
+            end
+            wasDetected = true
+            lastAlert = now
         end
+    elseif not scanForSpawn() then
+        wasDetected = false
     end
 end)
 
-local copyBtn = make("TextButton", {
-    Size = UDim2.new(1, 0, 0, 36),
-    Position = UDim2.new(0, 0, 0, 102),
-    BackgroundColor3 = Color3.fromRGB(100, 10, 10),
-    BorderSizePixel = 0,
-    Text = "COPY POSITION",
-    TextColor3 = Color3.fromRGB(255, 200, 200),
-    TextSize = 12,
-    Font = Enum.Font.GothamBold,
-}, t3)
-corner(10, copyBtn)
-
-make("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 20),
-    Position = UDim2.new(0, 0, 0, 146),
-    BackgroundTransparency = 1,
-    Text = "-- SAVED POSITIONS",
-    TextColor3 = Color3.fromRGB(100, 20, 20),
-    TextSize = 10,
-    Font = Enum.Font.GothamBold,
-    TextXAlignment = Enum.TextXAlignment.Left,
-}, t3)
-
-local posLog = make("ScrollingFrame", {
-    Size = UDim2.new(1, 0, 0, 170),
-    Position = UDim2.new(0, 0, 0, 166),
-    BackgroundColor3 = Color3.fromRGB(12, 4, 4),
-    BorderSizePixel = 0,
-    ScrollBarThickness = 2,
-    ScrollBarImageColor3 = Color3.fromRGB(120, 20, 20),
-    CanvasSize = UDim2.new(0, 0, 0, 0),
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-}, t3)
-corner(8, posLog)
-make("UIStroke", { Color = Color3.fromRGB(70, 10, 10), Thickness = 1, Transparency = 0.5 }, posLog)
-make("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingTop = UDim.new(0, 6), PaddingRight = UDim.new(0, 8) }, posLog)
-make("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, posLog)
-
-local posLogCount = 0
-local savedPositions = {}
-
-local function addPosLog(msg, color)
-    posLogCount += 1
-    make("TextLabel", {
-        Size = UDim2.new(1, 0, 0, 16),
-        BackgroundTransparency = 1,
-        Text = msg,
-        TextColor3 = color or Color3.fromRGB(160, 50, 50),
-        TextSize = 10,
-        Font = Enum.Font.Code,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        LayoutOrder = posLogCount,
-    }, posLog)
-    task.wait()
-    posLog.CanvasPosition = Vector2.new(0, posLog.AbsoluteCanvasSize.Y)
-end
-
-copyBtn.MouseButton1Click:Connect(function()
-    local char = localPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-    local p = hrp.Position
-    local str = string.format("Vector3.new(%.3f, %.3f, %.3f)", p.X, p.Y, p.Z)
-    table.insert(savedPositions, str)
-    setclipboard(str)
-    tween(copyBtn, { BackgroundColor3 = Color3.fromRGB(60, 120, 40) })
-    copyBtn.Text = "COPIED!"
-    task.wait(0.8)
-    tween(copyBtn, { BackgroundColor3 = Color3.fromRGB(100, 10, 10) })
-    copyBtn.Text = "COPY POSITION"
-    addPosLog(string.format("[#%d] %s", #savedPositions, str), Color3.fromRGB(200, 80, 80))
-end)
-
--- ===== RightShift TOGGLE =====
+-- ===== KEY BINDINGS =====
 UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end
-    if input.KeyCode == Enum.KeyCode.RightShift then
+    
+    if isListeningForKey then
+        GUI_TOGGLE_KEY = input.KeyCode
+        isListeningForKey = false
+        updateKeyDisplay()
+        tween(keyDisplayBtn, { BackgroundColor3 = Color3.fromRGB(30, 30, 50) })
+    elseif input.KeyCode == GUI_TOGGLE_KEY then
         win.Visible = not win.Visible
     end
 end)
 
--- ===== DRAG =====
+-- ===== DRAG FUNCTIONALITY =====
 local dragging, dragStart, startPos
 titleBar.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -652,16 +825,12 @@ end)
 UserInputService.InputChanged:Connect(function(input)
     if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
         local d = input.Position - dragStart
-        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        win.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset+d.X, startPos.Y.Scale, startPos.Y.Offset+d.Y)
     end
 end)
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
 end)
 
--- ===== INIT =====
-addAfkLog("Demonser Hub v2 loaded.")
-addAfkLog("3 modules ready.")
-addNpcLog("Ready. Press SCAN to detect NPCs.", Color3.fromRGB(120, 40, 40))
-addPosLog("Ready. Press COPY to save position.", Color3.fromRGB(120, 40, 40))
-print("Demonser Hub v2 | RightShift = toggle")
+print("✅ Lopper Hub Pro v2 — Spawn + Anti-AFK Guardian + FPS + ESP + Key Binding")
+
